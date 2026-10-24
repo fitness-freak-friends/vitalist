@@ -4,8 +4,14 @@ import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+type Props = {
+  user: { name: string; email: string };
+  children: React.ReactNode;
+};
+
+export default function AppShell({ user, children }: Props) {
   const [open, setOpen] = useState(true);
+  const toggle = () => setOpen((o) => !o);
 
   // Start collapsed on phones
   useEffect(() => {
@@ -18,7 +24,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#F3F5F2]">
-      <Sidebar open={open} onNavigate={closeOnMobile} />
+      <Sidebar open={open} onToggle={toggle} onNavigate={closeOnMobile} />
       {open && (
         <div
           className="fixed inset-0 z-30 bg-black/40 md:hidden"
@@ -27,7 +33,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         />
       )}
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar onToggle={() => setOpen((o) => !o)} />
+        <Topbar user={user} onMenuClick={toggle} />
         <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
       </div>
     </div>

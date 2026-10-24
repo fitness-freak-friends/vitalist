@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, CalendarDays } from "lucide-react";
-import { user } from "@/lib/user";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -53,7 +52,7 @@ function Runner() {
   );
 }
 
-export default function GreetingBanner() {
+export default function GreetingBanner({ name }: { name: string }) {
   // Set after mount so server and client HTML match
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => setNow(new Date()), []);
@@ -65,7 +64,6 @@ export default function GreetingBanner() {
 
   return (
     <section className="relative flex min-h-[190px] items-center overflow-hidden rounded-2xl bg-gradient-to-b from-[#EAF6EE] to-[#D3EADB] px-6 py-6 md:px-10">
-      {/* Misty mountains */}
       <svg
         viewBox="0 0 800 200"
         preserveAspectRatio="none"
@@ -80,7 +78,7 @@ export default function GreetingBanner() {
       {/* Left: greeting */}
       <div className="relative z-10 max-w-md">
         <h1 className="text-2xl font-bold tracking-tight text-[#12264A] md:text-3xl">
-          {greeting}, {user.name}! <span aria-hidden>👋</span>
+            {greeting}, {name.split(" ")[0]}! <span aria-hidden>👋</span>
         </h1>
         <p className="mt-1.5 text-sm text-[#12264A]/70 md:text-base">
           Let&apos;s make today a healthier and stronger you.

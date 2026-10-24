@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
-import { Bricolage_Grotesque, Caveat } from "next/font/google";
-import AppShell from "@/components/AppShell";
+import "@fontsource-variable/bricolage-grotesque";
+import "@fontsource/caveat/700.css";
 import "./globals.css";
-
-const font = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-sans" });
-const hand = Caveat({ subsets: ["latin"], weight: "700", variable: "--font-hand" });
 
 export const metadata: Metadata = {
   title: "Vitalist",
@@ -14,11 +11,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body
-        className={`${font.variable} ${hand.variable} font-[family-name:var(--font-sans)] antialiased`}
-      >
-        <AppShell>{children}</AppShell>
-      </body>
+      <body className="font-[family-name:var(--font-sans)] antialiased">{children}</body>
     </html>
   );
 }
