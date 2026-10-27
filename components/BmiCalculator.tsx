@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
-import { saveBmi, deleteBmi, type BmiState } from "@/app/(app)/bmi/actions";
 import {
   calcBmi, categoryFor, healthyRangeKg, CATEGORY_INFO, type BmiCategory,
 } from "@/lib/bmi";
@@ -18,11 +18,12 @@ type Props = {
   history: Row[];
 };
 
+type Message = { error?: string; saved?: boolean } | null;
+
 const input =
   "w-full rounded-xl border border-[#14211C]/15 bg-white px-4 py-3 text-sm text-[#14211C] " +
   "placeholder:text-[#14211C]/40 focus:outline focus:outline-2 focus:outline-[#0F2A24]";
 
-// Gauge scale: BMI 15 to 40, split at 18.5 / 25 / 30
 const MIN = 15;
 const MAX = 40;
 const SEGMENTS: { cat: BmiCategory; from: number; to: number }[] = [
@@ -31,11 +32,21 @@ const SEGMENTS: { cat: BmiCategory; from: number; to: number }[] = [
   { cat: "OVERWEIGHT", from: 25, to: 30 },
   { cat: "OBESE", from: 30, to: 40 },
 ];
+const pct = (v: number) => ((Math.min(Math.max(v, MIN), MAX) - MIN) / (MAX - MIN)) * 100;
+const TICKS = [15, 18.5, 25, 30, 40];
+
+async function readError(res: Response) {
+  const data = await res.json().catch(() => null);
+  return (data?.error as string | undefined) ?? "Something went wrong. Please try again.";
+}
 
 export default function BmiCalculator({ defaultHeight, defaultWeight, history }: Props) {
+  const router = useRouter();
   const [height, setHeight] = useState(defaultHeight ? String(defaultHeight) : "");
   const [weight, setWeight] = useState(defaultWeight ? String(defaultWeight) : "");
-  const [state, action, pending] = useActionState<BmiState, FormData>(saveBmi, null);
+  const [message, setMessage] = useState<Message>(null);
+  const [pending, setPending] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const h = Number(height);
   const w = Number(weight);
@@ -43,23 +54,62 @@ export default function BmiCalculator({ defaultHeight, defaultWeight, history }:
   const bmi = valid ? calcBmi(w, h) : null;
   const info = bmi !== null ? CATEGORY_INFO[categoryFor(bmi)] : null;
   const range = valid ? healthyRangeKg(h) : null;
-  const markerPct =
-    bmi !== null ? ((Math.min(Math.max(bmi, MIN), MAX) - MIN) / (MAX - MIN)) * 100 : 0;
+  const markerPct = bmi !== null ? pct(bmi) : 0;
+
+  async function onSave(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!valid) return;
+    setMessage(null);
+    setPending(true);
+    try {
+      const res = await fetch("/api/bmi/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ heightCm: h, weightKg: w }),
+      });
+      if (!res.ok) {
+        setMessage({ error: await readError(res) });
+        return;
+      }
+      setMessage({ saved: true });
+      router.refresh(); 
+    } catch {
+      setMessage({ error: "Network error. Check your connection and try again." });
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function onDelete(id: string) {
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/bmi/delete/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        setMessage({ error: await readError(res) });
+        return;
+      }
+      router.refresh();
+    } catch {
+      setMessage({ error: "Network error. Check your connection and try again." });
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <div className="mt-6 grid gap-6 lg:grid-cols-5">
-      {/* Calculator */}
       <section className="rounded-3xl bg-white p-6 shadow-sm md:p-8 lg:col-span-3">
-        <form action={action} className="space-y-5">
+        <form onSubmit={onSave} className="space-y-5">
           <div className="grid gap-5 sm:grid-cols-2">
             <div>
               <label htmlFor="heightCm" className="mb-1.5 block text-sm font-medium text-[#14211C]">
                 Height (cm)
               </label>
               <input
-                id="heightCm" name="heightCm" type="number" required min={100} max={250}
+                id="heightCm" type="number" required min={100} max={250}
                 step="0.1" inputMode="decimal" placeholder="e.g. 170" className={input}
-                value={height} onChange={(e) => setHeight(e.target.value)}
+                value={height}
+                onChange={(e) => { setHeight(e.target.value); setMessage(null); }}
               />
             </div>
             <div>
@@ -67,14 +117,14 @@ export default function BmiCalculator({ defaultHeight, defaultWeight, history }:
                 Weight (kg)
               </label>
               <input
-                id="weightKg" name="weightKg" type="number" required min={25} max={400}
+                id="weightKg" type="number" required min={25} max={400}
                 step="0.1" inputMode="decimal" placeholder="e.g. 65" className={input}
-                value={weight} onChange={(e) => setWeight(e.target.value)}
+                value={weight}
+                onChange={(e) => { setWeight(e.target.value); setMessage(null); }}
               />
             </div>
           </div>
 
-          {/* Live result */}
           <div className="rounded-2xl bg-[#F3F5F2] p-5" aria-live="polite">
             {bmi !== null && info ? (
               <>
@@ -91,14 +141,13 @@ export default function BmiCalculator({ defaultHeight, defaultWeight, history }:
                   </span>
                 </div>
 
-                {/* Gauge */}
                 <div className="relative mt-6">
                   <div className="flex h-3 overflow-hidden rounded-full">
                     {SEGMENTS.map((s) => (
                       <div
                         key={s.cat}
                         style={{
-                          width: `${((s.to - s.from) / (MAX - MIN)) * 100}%`,
+                          width: `${pct(s.to) - pct(s.from)}%`,
                           backgroundColor: CATEGORY_INFO[s.cat].color,
                         }}
                       />
@@ -106,10 +155,22 @@ export default function BmiCalculator({ defaultHeight, defaultWeight, history }:
                   </div>
                   <div
                     className="absolute -top-1.5 h-6 w-1.5 -translate-x-1/2 rounded-full bg-[#14211C] ring-2 ring-white transition-[left] duration-300"
-                    style={{ left: `${markerPct}%` }}
+                    style={{ left: `${Math.min(Math.max(markerPct, 1), 99)}%` }}
                   />
-                  <div className="mt-2 flex justify-between text-[11px] text-[#14211C]/50">
-                    <span>15</span><span>18.5</span><span>25</span><span>30</span><span>40</span>
+                  <div className="relative mt-2 h-4 text-[11px] text-[#14211C]/50">
+                    {TICKS.map((t) => (
+                      <span
+                        key={t}
+                        className="absolute"
+                        style={{
+                          left: `${pct(t)}%`,
+                          transform:
+                            t === MIN ? "none" : t === MAX ? "translateX(-100%)" : "translateX(-50%)",
+                        }}
+                      >
+                        {t}
+                      </span>
+                    ))}
                   </div>
                 </div>
 
@@ -129,8 +190,8 @@ export default function BmiCalculator({ defaultHeight, defaultWeight, history }:
           </div>
 
           <p role="alert" aria-live="polite" className="min-h-5 text-sm">
-            {state?.error && <span className="text-red-600">{state.error}</span>}
-            {state?.saved && !state.error && <span className="text-[#2F9E6E]">Saved to your history.</span>}
+            {message?.error && <span className="text-red-600">{message.error}</span>}
+            {message?.saved && <span className="text-[#2F9E6E]">Saved to your history.</span>}
           </p>
 
           <button
@@ -142,15 +203,9 @@ export default function BmiCalculator({ defaultHeight, defaultWeight, history }:
           >
             {pending ? "Saving…" : "Save to history"}
           </button>
-
-          <p className="text-xs text-[#14211C]/50">
-            BMI is a general screening measure and doesn&apos;t account for muscle mass, age or body
-            composition. It isn&apos;t a medical diagnosis.
-          </p>
         </form>
       </section>
 
-      {/* History */}
       <section className="rounded-3xl bg-white p-6 shadow-sm md:p-8 lg:col-span-2">
         <h2 className="text-lg font-semibold text-[#14211C]">History</h2>
 
@@ -181,17 +236,16 @@ export default function BmiCalculator({ defaultHeight, defaultWeight, history }:
                       · {r.heightCm} cm
                     </p>
                   </div>
-                  <form action={deleteBmi}>
-                    <input type="hidden" name="id" value={r.id} />
-                    <button
-                      type="submit"
-                      aria-label="Delete this record"
-                      className="rounded-lg p-2 text-[#14211C]/40 hover:bg-red-50 hover:text-red-600
-                        focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0F2A24]"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </form>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(r.id)}
+                    disabled={deletingId === r.id}
+                    aria-label="Delete this record"
+                    className="rounded-lg p-2 text-[#14211C]/40 hover:bg-red-50 hover:text-red-600 disabled:opacity-40
+                      focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0F2A24]"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </li>
               );
             })}
